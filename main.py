@@ -21,11 +21,11 @@ from astrbot.core.platform.astr_message_event import AstrMessageEvent
 
 
 @register(
-    "astrbot_plugin_siliconflow-shouban",
+    "astrbot_plugin_shoubanhua",
     "shskjw",
-    "接入硅基流动画图，图片编辑，可自定义预设",
-    "1.0.0"
-    "https://github.com/shkjw/astrbot_plugin_siliconflow-shouban",
+    "通过第三方api进行手办化等功能",
+    "1.0.0", 
+    "https://github.com/shkjw/astrbot_plugin_shoubanhua",
 )
 class FigurineProPlugin(Star):
     class ImageWorkflow:
@@ -547,9 +547,6 @@ class FigurineProPlugin(Star):
             self.key_index = (self.key_index + 1) % len(keys)
             return key
 
-    # ====================================================================
-    # vvvvvvvvvvvvvvvv   MODIFICATION START   vvvvvvvvvvvvvvvv
-    # ====================================================================
 
     def _extract_image_url_from_response(self, data: Dict[str, Any]) -> str | None:
         """
@@ -610,10 +607,6 @@ class FigurineProPlugin(Star):
 
         logger.info(f"发送到 SiliconFlow API: URL={api_url}, Model={model_name}, HasImage={bool(image_bytes_list)}")
 
-        # ====================================================================
-        # ^^^^^^^^^^^^^^^^   MODIFICATION END     ^^^^^^^^^^^^^^^^
-        # ====================================================================
-
         try:
             if not self.iwf: return "ImageWorkflow 未初始化"
             async with self.iwf.session.post(api_url, json=payload, headers=headers, proxy=self.iwf.proxy,
@@ -654,5 +647,4 @@ class FigurineProPlugin(Star):
 
     async def terminate(self):
         if self.iwf: await self.iwf.terminate()
-
         logger.info("[FigurinePro] 插件已终止")
