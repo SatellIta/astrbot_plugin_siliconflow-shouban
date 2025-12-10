@@ -19,6 +19,51 @@ from astrbot.core import AstrBotConfig
 from astrbot.core.message.components import At, Image, Reply, Plain
 from astrbot.core.platform.astr_message_event import AstrMessageEvent
 
+COMMAND_DESCRIPTIONS = {
+    "手办化": "生成角色的手办造型，偏向立体模型展示",
+    "手办化2": "生成另一种风格的手办造型，可能是细节或比例的不同",
+    "手办化3": "生成不同版本的手办展示，更偏系列感",
+    "手办化4": "生成手办化第四种风格，可能是更精致或特殊造型",
+    "手办化5": "生成另一种改良版手办造型",
+    "手办化6": "生成手办化的第六种衍生风格",
+    "Q版化": "生成Q版（可爱简化比例）的角色形象",
+    "痛屋化": "生成痛屋（贴满角色元素装饰的房间）场景",
+    "痛屋化2": "生成改良版痛屋场景，更丰富或现代感",
+    "痛车化": "生成痛车（贴有角色图案的车辆）造型",
+    "cos化": "生成角色cosplay化的照片风格",
+    "cos自拍": "生成角色自拍风格的cos照片",
+    "孤独的我": "生成孤独、滑稽或小丑化的意境图",
+    "第一视角": "生成第一人称视角场景，沉浸感强",
+    "第三视角": "生成第三人称视角场景，看起来像他人在看角色",
+    "鬼图": "生成灵异鬼图风格照片，带恐怖氛围",
+    "贴纸化": "生成贴纸风格的小图，方便做表情或周边",
+    "玉足": "生成角色玉足相关的画面或细节",
+    "玩偶化": "生成毛绒玩偶（fumo）风格角色",
+    "cos相遇": "生成两位cos角色相遇的场景",
+    "三视图": "生成角色三视图（正面、侧面、背面）",
+    "穿搭拆解": "生成角色服装穿搭的详细拆解图",
+    "拆解图": "生成模型拆解或零件展示图",
+    "角色界面": "生成类似游戏中角色信息界面的画面",
+    "角色设定": "生成角色设定图，包含全身、武器、细节等",
+    "3D打印": "生成适合3D打印的模型预览图",
+    "微型化": "生成微缩模型、小比例角色形象",
+    "挂件化": "生成挂件、钥匙扣风格的角色造型",
+    "姿势表": "生成角色姿势参考表，多种动作合集",
+    "高清修复": "对画面进行高清化、细节修复",
+    "人物转身": "生成人物转身动作的连续画面",
+    "绘画四宫格": "生成四宫格绘画对比图或进度展示",
+    "发型九宫格": "生成九种不同发型的对比图",
+    "头像九宫格": "生成九个不同风格的头像合集",
+    "表情九宫格": "生成角色九种不同表情合集",
+    "多机位": "生成多机位拍摄的场景视角合集",
+    "电影分镜": "生成电影风格的分镜图",
+    "动漫分镜": "生成动漫风格的分镜图",
+    "真人化": "生成角色的真人化形象（真实感较强）",
+    "真人化2": "生成另一种风格的真人化形象",
+    "半真人": "生成半写实半动漫的混合风格",
+    "半融合": "生成角色与其他元素融合的半融合风格"
+}
+
 
 @register(
     "astrbot_plugin_shoubanhua",
@@ -227,25 +272,38 @@ class FigurineProPlugin(Star):
             images_to_process = [img_bytes_list[0]]
             yield event.plain_result(f"🎨 收到请求，正在生成 [{cmd}]...")
         start_time = datetime.now()
-        res = await self._call_api(images_to_process, user_prompt)
+        res_url = await self._call_api(images_to_process, user_prompt)
         elapsed = (datetime.now() - start_time).total_seconds()
-        if isinstance(res, bytes):
+
+        if res_url.startswith("http"):
             if not is_master:
-                if self.conf.get("enable_group_limit", False) and group_id and self._get_group_count(group_id) > 0:
-                    await self._decrease_group_count(group_id)
-                elif self.conf.get("enable_user_limit", True) and self._get_user_count(sender_id) > 0:
+                if self.conf.get("enable_user_limit", True):
                     await self._decrease_user_count(sender_id)
+                if group_id and self.conf.get("enable_group_limit", False):
+                    await self._decrease_group_count(group_id)
+
             caption_parts = [f"✅ 生成成功 ({elapsed:.2f}s)", f"预设: {display_cmd}"]
             if is_master:
-                caption_parts.append("剩余次数: ∞")
+                caption_parts.append(f"剩余次数: ∞")
             else:
-                if self.conf.get("enable_user_limit", True): caption_parts.append(
-                    f"个人剩余: {self._get_user_count(sender_id)}")
-                if self.conf.get("enable_group_limit", False) and group_id: caption_parts.append(
-                    f"本群剩余: {self._get_group_count(group_id)}")
-            yield event.chain_result([Image.fromBytes(res), Plain(" | ".join(caption_parts))])
+                user_count = self._get_user_count(sender_id)
+                caption_parts.append(f"个人剩余: {user_count}")
+                if group_id and self.conf.get("enable_group_limit", False):
+                    group_count = self._get_group_count(group_id)
+                    caption_parts.append(f"群组剩余: {group_count}")
+            
+            # --- URL 处理逻辑 ---
+            if "127.0.0.1" in res_url or "localhost" in res_url:
+                # 本地URL，转换为文件路径
+                image_name = res_url.split('/')[-1]
+                # 使用 expanduser() 展开 ~
+                local_path = Path(f"~/QQBot/antigravity2api-nodejs/public/images/{image_name}").expanduser()
+                yield event.chain_result([Image.fromFileSystem(str(local_path)), Plain(" | ".join(caption_parts))])
+            else:
+                # 远程URL，直接使用
+                yield event.chain_result([Image.fromURL(res_url), Plain(" | ".join(caption_parts))])
         else:
-            yield event.plain_result(f"❌ 生成失败 ({elapsed:.2f}s)\n原因: {res}")
+            yield event.plain_result(f"❌ 生成失败 ({elapsed:.2f}s)\n原因: {res_url}")
         event.stop_event()
 
     @filter.command("文生图", prefix_optional=True)
@@ -261,11 +319,11 @@ class FigurineProPlugin(Star):
 
         # --- 权限和次数检查 ---
         if not is_master:
-            if sender_id in self.conf.get("user_blacklist", []): return
-            if group_id and group_id in self.conf.get("group_blacklist", []): return
-            if self.conf.get("user_whitelist", []) and sender_id not in self.conf.get("user_whitelist", []): return
+            if sender_id in self.conf.get("user_blacklist", []): yield event.plain_result("❌ 您已被禁止使用此功能。")
+            if group_id and group_id in self.conf.get("group_blacklist", []): yield event.plain_result("❌ 本群已被禁止使用此功能。")
+            if self.conf.get("user_whitelist", []) and sender_id not in self.conf.get("user_whitelist", []): yield event.plain_result("❌ 您不在白名单中，无法使用此功能。")
             if group_id and self.conf.get("group_whitelist", []) and group_id not in self.conf.get("group_whitelist",
-                                                                                                   []): return
+                                                                                                   []): yield event.plain_result("❌ 本群不在白名单中，无法使用此功能。")
             user_count = self._get_user_count(sender_id)
             group_count = self._get_group_count(group_id) if group_id else 0
             user_limit_on = self.conf.get("enable_user_limit", True)
@@ -273,40 +331,49 @@ class FigurineProPlugin(Star):
             has_group_count = not group_limit_on or group_count > 0
             has_user_count = not user_limit_on or user_count > 0
             if group_id:
-                if not has_group_count and not has_user_count:
-                    yield event.plain_result("❌ 本群次数与您的个人次数均已用尽。");
-                    return
+                if not has_user_count and not has_group_count:
+                    yield event.plain_result("❌ 您的个人次数和本群次数均已用尽。")
             elif not has_user_count:
-                yield event.plain_result("❌ 您的使用次数已用完。");
-                return
+                yield event.plain_result("❌ 您的个人次数已用尽。")
+
 
         display_prompt = prompt[:20] + '...' if len(prompt) > 20 else prompt
         yield event.plain_result(f"🎨 收到文生图请求，正在生成 [{display_prompt}]...")
 
         start_time = datetime.now()
         # 调用通用API，但传入空的图片列表
-        res = await self._call_api([], prompt)
+        res_url = await self._call_api([], prompt)
         elapsed = (datetime.now() - start_time).total_seconds()
 
-        if isinstance(res, bytes):
+        if res_url.startswith("http"):
             if not is_master:
-                # 扣除次数
-                if self.conf.get("enable_group_limit", False) and group_id and self._get_group_count(group_id) > 0:
-                    await self._decrease_group_count(group_id)
-                elif self.conf.get("enable_user_limit", True) and self._get_user_count(sender_id) > 0:
+                if self.conf.get("enable_user_limit", True):
                     await self._decrease_user_count(sender_id)
+                if group_id and self.conf.get("enable_group_limit", False):
+                    await self._decrease_group_count(group_id)
 
             caption_parts = [f"✅ 生成成功 ({elapsed:.2f}s)"]
             if is_master:
-                caption_parts.append("剩余次数: ∞")
+                caption_parts.append(f"剩余次数: ∞")
             else:
-                if self.conf.get("enable_user_limit", True): caption_parts.append(
-                    f"个人剩余: {self._get_user_count(sender_id)}")
-                if self.conf.get("enable_group_limit", False) and group_id: caption_parts.append(
-                    f"本群剩余: {self._get_group_count(group_id)}")
-            yield event.chain_result([Image.fromBytes(res), Plain(" | ".join(caption_parts))])
+                user_count = self._get_user_count(sender_id)
+                caption_parts.append(f"个人剩余: {user_count}")
+                if group_id and self.conf.get("enable_group_limit", False):
+                    group_count = self._get_group_count(group_id)
+                    caption_parts.append(f"群组剩余: {group_count}")
+
+            # --- URL 处理逻辑 ---
+            if "127.0.0.1" in res_url or "localhost" in res_url:
+                # 本地URL，转换为文件路径
+                image_name = res_url.split('/')[-1]
+                # 使用 expanduser() 展开 ~
+                local_path = Path(f"~/QQBot/antigravity2api-nodejs/public/images/{image_name}").expanduser()
+                yield event.chain_result([Image.fromFileSystem(str(local_path)), Plain(" | ".join(caption_parts))])
+            else:
+                # 远程URL，直接使用
+                yield event.chain_result([Image.fromURL(res_url), Plain(" | ".join(caption_parts))])
         else:
-            yield event.plain_result(f"❌ 生成失败 ({elapsed:.2f}s)\n原因: {res}")
+            yield event.plain_result(f"❌ 生成失败 ({elapsed:.2f}s)\n原因: {res_url}")
         event.stop_event()
 
     @filter.command("lm添加", aliases={"lma"}, prefix_optional=True)
@@ -347,6 +414,34 @@ class FigurineProPlugin(Star):
             yield event.plain_result("未找到此预设指令")
             return
         yield event.plain_result(f"预设 [{keyword}] 的内容:\n{prompt}")
+
+    @filter.command("lm效果", aliases={"手办化效果"}, prefix_optional=True)
+    async def on_show_effects(self, event: AstrMessageEvent):
+        """显示所有可用的图生图指令及其效果说明"""
+        msg_parts = ["🎨 可用图生图指令及效果说明 🎨\n"]
+
+        # 从 prompt_map 获取当前所有可用的指令
+        available_commands = self.prompt_map.keys()
+
+        for cmd_name in sorted(available_commands):
+            # 从 COMMAND_DESCRIPTIONS 获取指令的功能说明
+            description = COMMAND_DESCRIPTIONS.get(cmd_name, "暂无描述")
+            msg_parts.append(f"✨ {cmd_name}: {description}")
+
+        msg_parts.append("\n" + ("-" * 20))
+        # 添加文生图指令的说明
+        msg_parts.append("\n📝 纯文本生图指令:")
+        msg_parts.append("➡️ #文生图 <你的描述>")
+
+        # 添加自定义图生图指令的说明
+        bnn_command = self.conf.get("extra_prefix", "bnn")
+        msg_parts.append(f"\n🎨 自定义图生图指令:")
+        msg_parts.append(f"➡️ 发送图片 + #{bnn_command} <你的提示词>")
+
+        msg_parts.append("\n" + ("-" * 20))
+        msg_parts.append("\n💡 如需查看具体指令的英文提示词，请使用 #lm帮助 <指令名>")
+
+        yield event.plain_result("\n".join(msg_parts))
 
     def is_global_admin(self, event: AstrMessageEvent) -> bool:
         admin_ids = self.context.get_config().get("admins_id", [])
@@ -551,61 +646,118 @@ class FigurineProPlugin(Star):
     def _extract_image_url_from_response(self, data: Dict[str, Any]) -> str | None:
         """
         从 API 响应中提取图片 URL。
-        适配 硅基流动 (SiliconFlow) 的响应格式。
+        适配 火山引擎 ARK (Doubao) 的响应格式。
         """
         try:
-            # 硅基流动的响应格式: {"images": [{"url": "..."}]}
-            url = data["images"][0]["url"]
+            # 火山引擎的响应格式: {"data": [{"url": "..."}]}
+            url = data["data"][0]["url"]
             logger.info(f"成功从 API 响应中提取到 URL: {url[:50]}...")
             return url
         except (IndexError, TypeError, KeyError):
-            logger.warning(f"未能在响应中找到 'images[0].url'，原始响应 (截断): {str(data)[:200]}")
+            logger.warning(f"未能在响应中找到 'data[0].url'，原始响应 (截断): {str(data)[:200]}")
             return None
 
-    async def _call_api(self, image_bytes_list: List[bytes], prompt: str) -> bytes | str:
-        api_url = self.conf.get("api_url")
-        if not api_url: return "API URL 未配置"
+    async def _call_api(self, image_bytes_list: List[bytes], prompt: str) -> str:
+        api_type = self.conf.get("api_type", "openai")
+        
+        # 根据 api_type 选择对应的 URL 和 Model
+        if api_type == "volcengine":
+            api_url = self.conf.get("volcengine_api_url") or self.conf.get("api_url") # 兼容旧配置
+            model_name = self.conf.get("volcengine_model") or self.conf.get("model")
+        elif api_type == "openai":
+            api_url = self.conf.get("openai_api_url")
+            model_name = self.conf.get("openai_model")
+        else:
+            return f"未知的 API 类型: {api_type}"
+
+        if not api_url: return f"API URL 未配置 ({api_type})"
+        if not model_name: return f"模型名称未配置 ({api_type})"
+
         api_key = await self._get_api_key()
         if not api_key: return "无可用的 API Key"
         headers = {"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"}
 
-        # --- 从配置读取模型名称 ---
-        model_name = self.conf.get("model")  # "model" 是必须的，从配置中读取
-        if not model_name:
-            return "模型名称 (model) 未配置"
+        payload: Dict[str, Any] = {}
 
-        # --- 构建 硅基流动 (SiliconFlow) API payload ---
-        payload: Dict[str, Any] = {
-            "model": model_name,
-            "prompt": prompt,
-            # "response_format": "url" # 默认为 url，URL 1小时有效
-            # 根据 SiliconFlow 文档，可以添加 image_size, negative_prompt 等
-            # 但为保持插件简洁性，暂不从 conf_schema 添加，依赖模型默认值
-        }
+        if api_type == "volcengine":
+            # --- 构建 火山引擎 ARK (Doubao) API payload ---
+            payload = {
+                "model": model_name,
+                "prompt": prompt,
+                "size": self.conf.get("image_size", "2K"),  # 从配置读取，默认 2K
+                "sequential_image_generation": self.conf.get("sequential_image_generation", "disabled"),
+                "stream": False,
+                "response_format": "url",  # URL格式
+                "watermark": self.conf.get("watermark", False)  # 从配置读取，默认False
+            }
+            # --- 添加图片 (图生图) ---
+            if image_bytes_list:
+                try:
+                    img_b64 = base64.b64encode(image_bytes_list[0]).decode("utf-8")
+                    payload["image"] = f"data:image/png;base64,{img_b64}"
+                    if len(image_bytes_list) > 1:
+                        logger.warning(f"检测到 {len(image_bytes_list)} 张图片，火山引擎模型仅支持单张，已选取第一张")
+                except Exception as e:
+                    logger.error(f"Base64 编码图片时出错: {e}", exc_info=True)
+                    return f"图片编码失败: {e}"
 
-        # --- 添加图片 (图生图 / 多图) ---
-        if image_bytes_list:
-            # 这是图生图 (或多图)
-            try:
-                img_b64 = base64.b64encode(image_bytes_list[0]).decode("utf-8")
-                payload["image"] = f"data:image/png;base64,{img_b64}"
+        elif api_type == "openai":
+            # 检查是否使用 Chat Completions API (根据 URL 判断)
+            is_chat_api = "chat/completions" in api_url
+            
+            if is_chat_api:
+                # --- 构建 Chat Completions API payload ---
+                messages = []
+                if image_bytes_list:
+                    # 图生图 / Vision 模式
+                    content = [{"type": "text", "text": prompt}]
+                    try:
+                        img_b64 = base64.b64encode(image_bytes_list[0]).decode("utf-8")
+                        content.append({
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:image/jpeg;base64,{img_b64}"
+                            }
+                        })
+                        if len(image_bytes_list) > 1:
+                            logger.warning(f"检测到 {len(image_bytes_list)} 张图片，Chat模式仅支持单张，已选取第一张")
+                    except Exception as e:
+                        logger.error(f"Base64 编码图片时出错: {e}", exc_info=True)
+                        return f"图片编码失败: {e}"
+                    messages.append({"role": "user", "content": content})
+                else:
+                    # 文生图 / 纯文本模式
+                    messages.append({"role": "user", "content": prompt})
+                
+                payload = {
+                    "model": model_name,
+                    "messages": messages,
+                    "stream": False
+                }
+            else:
+                # --- 构建 标准 OpenAI Image API payload (images/generations) ---
+                payload = {
+                    "model": model_name,
+                    "prompt": prompt,
+                    "n": 1,
+                    "size": self.conf.get("image_size", "1024x1024"),
+                    "response_format": "url"
+                }
+                # --- 添加图片 (图生图) ---
+                if image_bytes_list:
+                    try:
+                        img_b64 = base64.b64encode(image_bytes_list[0]).decode("utf-8")
+                        # 尝试使用 image 字段，部分兼容 API 可能使用 image_url 或其他字段，这里按常见兼容格式处理
+                        payload["image"] = f"data:image/png;base64,{img_b64}"
+                        if len(image_bytes_list) > 1:
+                            logger.warning(f"检测到 {len(image_bytes_list)} 张图片，OpenAI 模式仅支持单张，已选取第一张")
+                    except Exception as e:
+                        logger.error(f"Base64 编码图片时出错: {e}", exc_info=True)
+                        return f"图片编码失败: {e}"
+        else:
+            return f"未知的 API 类型: {api_type}"
 
-                # (可选) 支持 SiliconFlow 的多图输入 (最多3张)
-                # 插件的 bnn 命令最多支持5张，但 SiliconFlow 常见模型支持到 image3
-                if len(image_bytes_list) > 1:
-                    img_b64_2 = base64.b64encode(image_bytes_list[1]).decode("utf-8")
-                    payload["image2"] = f"data:image/png;base64,{img_b64_2}"
-
-                if len(image_bytes_list) > 2:
-                    img_b64_3 = base64.b64encode(image_bytes_list[2]).decode("utf-8")
-                    payload["image3"] = f"data:image/png;base64,{img_b64_3}"
-            except Exception as e:
-                logger.error(f"Base64 编码图片时出错: {e}", exc_info=True)
-                return f"图片编码失败: {e}"
-        # else:
-        # 这是文生图，payload 保持原样 (model + prompt)
-
-        logger.info(f"发送到 SiliconFlow API: URL={api_url}, Model={model_name}, HasImage={bool(image_bytes_list)}")
+        logger.info(f"发送到 API ({api_type}): URL={api_url}, Model={model_name}, HasImage={bool(image_bytes_list)}")
 
         try:
             if not self.iwf: return "ImageWorkflow 未初始化"
@@ -617,32 +769,65 @@ class FigurineProPlugin(Star):
                     return f"API请求失败 (HTTP {resp.status}): {error_text[:200]}"
 
                 data = await resp.json()
+                gen_image_url = None
+                
+                # 处理 Chat Completions API 响应
+                if api_type == "openai" and "chat/completions" in api_url:
+                    try:
+                        content = data["choices"][0]["message"]["content"]
+                        # 尝试从 content 中提取 URL
+                        # 1. 检查是否包含 markdown 图片格式 ![...](url)
+                        match = re.search(r'!\[.*?\]\((.*?)\)', content)
+                        if match:
+                            gen_image_url = match.group(1)
+                        # 2. 检查是否包含 http/https 链接
+                        elif "http" in content:
+                            url_match = re.search(r'(https?://[^\s)]+)', content)
+                            if url_match:
+                                gen_image_url = url_match.group(1)
+                        
+                        if not gen_image_url:
+                             # 如果内容本身看起来像 URL (虽然上面 regex 应该覆盖了，但作为兜底)
+                            if content.strip().startswith("http"):
+                                gen_image_url = content.strip()
+                            else:
+                                logger.warning(f"无法从Chat响应中提取图片URL，将返回原始content: {content}")
+                                return content
+                        
+                        # 直接返回URL
+                        return gen_image_url
 
-                if "images" not in data or not data["images"]:
-                    error_msg = f"API响应中未找到图片数据: {str(data)[:500]}..."
-                    logger.error(f"API响应中未找到图片数据: {data}")
-                    if "error" in data:
-                        return data["error"].get("message", json.dumps(data["error"]))
-                    return error_msg
+                    except (KeyError, IndexError, TypeError) as e:
+                        logger.error(f"解析Chat响应结构失败: {data}", exc_info=True)
+                        return f"解析Chat响应失败: {str(data)[:200]}"
+                else:
+                    # 处理 标准 Image API 响应 (火山引擎 或 OpenAI Image)
+                    # 检查响应格式 {"data": [{"url": "..."}]}
+                    if "data" not in data or not data["data"]:
+                        error_msg = f"API响应中未找到图片数据: {str(data)[:500]}..."
+                        logger.error(f"API响应中未找到图片数据: {data}")
+                        if "error" in data:
+                            # 尝试提取错误信息
+                            if isinstance(data["error"], dict):
+                                return data["error"].get("message", json.dumps(data["error"]))
+                            return str(data["error"])
+                        return error_msg
 
-                gen_image_url = self._extract_image_url_from_response(data)
+                    gen_image_url = self._extract_image_url_from_response(data)
 
                 if not gen_image_url:
                     error_msg = f"API响应解析失败: {str(data)[:500]}..."
                     logger.error(f"API响应解析失败: {data}")
                     return error_msg
 
-                if gen_image_url.startswith("data:image/"):
-                    b64_data = gen_image_url.split(",", 1)[1]
-                    return base64.b64decode(b64_data)
-                else:
-                    # SiliconFlow 返回的是 URL，需要下载
-                    return await self.iwf._download_image(gen_image_url) or "下载生成的图片失败"
+                # 对于非Chat API，直接返回URL
+                return gen_image_url
+                    
         except asyncio.TimeoutError:
-            logger.error("API 请求超时");
+            logger.error("API 请求超时")
             return "请求超时"
         except Exception as e:
-            logger.error(f"调用 API 时发生未知错误: {e}", exc_info=True);
+            logger.error(f"调用 API 时发生未知错误: {e}", exc_info=True)
             return f"发生未知错误: {e}"
 
     async def terminate(self):
